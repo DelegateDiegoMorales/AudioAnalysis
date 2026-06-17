@@ -211,17 +211,26 @@ async def analizar(audio: UploadFile = File(...)):
             "scores":         scores,
             "interpretacion": interpretar(scores),
             "duracion_s":     round(duracion, 2),
+            "peak_original":  round(peak, 5),
             "features_raw": {
+                # pitch
                 "pitch_medio":        round(fd.get("F0semitoneFrom27.5Hz_sma3nz_amean",      0), 4),
                 "pitch_variabilidad": round(fd.get("F0semitoneFrom27.5Hz_sma3nz_stddevNorm", 0), 4),
+                # voice quality
                 "jitter":             round(fd.get("jitterLocal_sma3nz_amean",               0), 6),
                 "shimmer_dB":         round(fd.get("shimmerLocaldB_sma3nz_amean",            0), 4),
                 "HNR_dB":             round(fd.get("HNRdBACF_sma3nz_amean",                  0), 4),
-                "loudness_media":     round(fd.get("loudness_sma3_amean",                    0), 4),
+                # loudness
+                "loudness_media":     round(fd.get("loudness_sma3_amean",                    0), 6),
                 "loudness_variacion": round(fd.get("loudness_sma3_stddevNorm",               0), 4),
+                # spectral
                 "spectral_flux":      round(fd.get("spectralFlux_sma3_amean",                0), 4),
+                "spectral_flux_std":  round(fd.get("spectralFlux_sma3_stddevNorm",           0), 4),
+                # speech rate / pauses
                 "voiced_per_sec":     round(fd.get("VoicedSegmentsPerSec",                   0), 4),
+                "mean_voiced_s":      round(fd.get("MeanVoicedSegmentLengthSec",             0), 4),
                 "mean_unvoiced_s":    round(fd.get("MeanUnvoicedSegmentLength",              0), 4),
+                "std_unvoiced_s":     round(fd.get("StddevUnvoicedSegmentLength",            0), 4),
             }
         })
 
