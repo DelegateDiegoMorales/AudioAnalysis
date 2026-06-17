@@ -25,86 +25,63 @@ smile = opensmile.Smile(
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Rangos de referencia (hablante adulto en conversación relajada)
-# ─────────────────────────────────────────────────────────────────────────────
-
-PESOS_NERVIOSISMO = {
-    "jitterLocal_sma3nz_amean":               0.30,
-    "F0semitoneFrom27.5Hz_sma3nz_stddevNorm": 0.20,
-    "shimmerLocaldB_sma3nz_amean":            0.20,
-    "HNRdBACF_sma3nz_amean":                  0.20,   # invertido
-    "loudness_sma3_stddevNorm":               0.10,
-}
-
-RANGOS = {
-    "jitterLocal_sma3nz_amean":               (0.002, 0.015),
-    "F0semitoneFrom27.5Hz_sma3nz_stddevNorm": (0.10,  0.40),
-    "shimmerLocaldB_sma3nz_amean":            (0.20,  0.80),
-    "HNRdBACF_sma3nz_amean":                  (10.0,  20.0),
-    "loudness_sma3_stddevNorm":               (0.20,  0.60),
-}
+# Rangos calibrados con grabaciones reales (micrófono Unity, 16 kHz, normalizado)
+# Valores observados: jitter 0.03-0.07, shimmer 0.87-1.05, HNR 6.6-7.0 dB,
+#   loudness_std 0.81-0.89, voiced_per_sec ~1.7, mean_unvoiced 0.34-0.39
 
 
-def normalizar(nombre, valor):
-    if nombre not in RANGOS:
+def n01(val, lo, hi):
+    """Normaliza val a [0,1] en el rango [lo, hi], clipeado."""
+    if hi == lo:
         return 0.5
-    minv, maxv = RANGOS[nombre]
-    rango = maxv - minv
-    if rango == 0:
-        return 0.5
-    norm = (1.0 - (valor - minv) / rango) if "HNR" in nombre else (valor - minv) / rango
-    return float(np.clip(norm, 0.0, 1.0))
+    return float(np.clip((val - lo) / (hi - lo), 0.0, 1.0))
 
 
 def calcular_scores(fd):
     # ── Nerviosismo (0-10) ─────────────────────────────────────────────────
-    score_nerv = 0.0
-    det = {}
-    for feat, peso in PESOS_NERVIOSISMO.items():
-        if feat in fd:
-            n = normalizar(feat, fd[feat])
-            score_nerv += n * peso
-            det[feat] = round(n, 3)
-
-    nerviosismo = round(min(score_nerv * 10, 10.0), 2)
+    # Features confiables para micrófono: HNR (invertido) + loudness_std
+    # jitter/shimmer NO se usan: amplificación de ruido los infla artificialmente
+    hnr      = fd.get("HNRdBACF_sma3nz_amean",   7.0)
+    loud_std = fd.get("loudness_sma3_stddevNorm", 0.60)
+    hnr_inv  = 1.0 - n01(hnr,      4.0, 12.0)  # HNR bajo → más nervioso
+    loud_n   = n01(loud_std, 0.40,  1.00)       # variación alta → más nervioso
+    nerviosismo = round(min((hnr_inv * 0.55 + loud_n * 0.45) * 10, 10.0), 2)
 
     # ── Confianza (0-10) ───────────────────────────────────────────────────
-    pitch_est = 1.0 - det.get("F0semitoneFrom27.5Hz_sma3nz_stddevNorm", 0.5)
-    hnr_alto  = 1.0 - det.get("HNRdBACF_sma3nz_amean",                  0.5)
-    jit_bajo  = 1.0 - det.get("jitterLocal_sma3nz_amean",               0.5)
-    confianza = round(min((pitch_est * 0.4 + hnr_alto * 0.35 + jit_bajo * 0.25) * 10, 10.0), 2)
+    # HNR (voz limpia = confiada) + voiced rate (habla fluida = confiada)
+    vps     = fd.get("VoicedSegmentsPerSec", 1.5)
+    hnr_dir = n01(hnr, 4.0, 12.0)   # HNR alto → más confiado
+    vps_n   = n01(vps, 0.0,  3.5)
+    confianza = round(min((hnr_dir * 0.55 + vps_n * 0.45) * 10, 10.0), 2)
 
     # ── Energía / Entusiasmo (0-10) ────────────────────────────────────────
-    ln      = float(np.clip((fd.get("loudness_sma3_amean",    0.3) - 0.1) / 0.8, 0.0, 1.0))
-    fn      = float(np.clip((fd.get("spectralFlux_sma3_amean", 0.5) - 0.1) / 1.5, 0.0, 1.0))
-    energia = round(min((ln * 0.6 + fn * 0.4) * 10, 10.0), 2)
+    loud_med = fd.get("loudness_sma3_amean",     0.30)
+    flux_med = fd.get("spectralFlux_sma3_amean", 0.28)
+    ln       = n01(loud_med, 0.05, 0.80)
+    fn       = n01(flux_med, 0.05, 0.55)
+    energia  = round(min((ln * 0.60 + fn * 0.40) * 10, 10.0), 2)
 
     # ── Monotonía (0-10, 10 = muy monótono) ───────────────────────────────
-    # f0_std bajo = pitch plano = monótono
-    # Rango natural: ~0.05 (muy plano) → ~0.50 (muy expresivo)
+    # F0 stddev bajo → pitch plano → monótono
     f0_std    = fd.get("F0semitoneFrom27.5Hz_sma3nz_stddevNorm", 0.25)
     mono_n    = float(np.clip(1.0 - (f0_std / 0.50), 0.0, 1.0))
     monotonia = round(mono_n * 10, 2)
 
     # ── Dinamismo vocal (0-10) ─────────────────────────────────────────────
-    # stddev del volumen + spectral flux como proxies de expresividad
-    loud_std = fd.get("loudness_sma3_stddevNorm", 0.30)
-    # spectralFlux stddev puede no existir; usar amean como proxy
-    flux_val = fd.get("spectralFlux_sma3_stddevNorm",
-                      fd.get("spectralFlux_sma3_amean", 0.50))
-    d_loud    = float(np.clip((loud_std - 0.10) / 0.50, 0.0, 1.0))
-    d_flux    = float(np.clip((flux_val  - 0.10) / 1.40, 0.0, 1.0))
+    flux_val  = fd.get("spectralFlux_sma3_stddevNorm",
+                       fd.get("spectralFlux_sma3_amean", 0.28))
+    d_loud    = n01(loud_std, 0.30, 1.00)
+    d_flux    = n01(flux_val, 0.05, 0.55)
     dinamismo = round((d_loud * 0.60 + d_flux * 0.40) * 10, 2)
 
     # ── Velocidad del habla (0-10, ~5 = normal) ───────────────────────────
-    # Neutral si VoicedSegmentsPerSec no existe en el feature set
-    vps = fd.get("VoicedSegmentsPerSec", None)
-    velocidad = 5.0 if vps is None else round(float(np.clip(vps / 6.0, 0.0, 1.0)) * 10, 2)
+    # Max real observado con micrófono Unity normalizado: ~3.5 segs vocalizados/s
+    vps_val  = fd.get("VoicedSegmentsPerSec", None)
+    velocidad = 5.0 if vps_val is None else round(float(np.clip(vps_val / 3.5, 0.0, 1.0)) * 10, 2)
 
-    # ── Ratio de pausas (0-10, 10 = muchas pausas largas) ─────────────────
-    # Neutral si MeanUnvoicedSegmentLength no existe
+    # ── Ratio de pausas (0-10, 10 = muchas pausas) ────────────────────────
     mun = fd.get("MeanUnvoicedSegmentLength", None)
-    ratio_pausas = 5.0 if mun is None else round(float(np.clip((mun - 0.05) / 0.60, 0.0, 1.0)) * 10, 2)
+    ratio_pausas = 5.0 if mun is None else round(float(np.clip((mun - 0.05) / 0.75, 0.0, 1.0)) * 10, 2)
 
     return {
         "nerviosismo":  nerviosismo,
@@ -128,12 +105,13 @@ def interpretar(scores):
 
     partes = []
 
-    partes.append("tranquilo y controlado" if n <= 3 else
-                  "nerviosismo moderado"   if n <= 6 else
-                  "nerviosismo alto")
+    # Con micrófono Unity la línea base de nerviosismo es ~6-7 (HNR bajo + ruido)
+    partes.append("tranquilo y controlado" if n <= 5.0 else
+                  "tensión vocal moderada" if n <= 7.5 else
+                  "tensión vocal alta")
 
-    partes.append("voz confiada y estable" if c >= 7 else
-                  "confianza moderada"     if c >= 4 else
+    partes.append("voz confiada" if c >= 6.0 else
+                  "confianza moderada"  if c >= 3.5 else
                   "voz insegura")
 
     partes.append("alta energía"   if e >= 7 else
