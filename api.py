@@ -16,7 +16,7 @@ import opensmile
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.responses import JSONResponse
-from groq import Groq
+import requests as req_lib
 
 app = FastAPI(title="MentorIA Audio Analyzer", version="2.0")
 
@@ -314,18 +314,26 @@ async def analizar_texto(request: Request):
     )
 
     try:
-        cliente = Groq(api_key=groq_key)
-        respuesta = cliente.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[
-                {"role": "system", "content": PROMPT_SISTEMA},
-                {"role": "user",   "content": prompt},
-            ],
-            temperature=0.1,
-            max_tokens=800,
-            response_format={"type": "json_object"},
+        respuesta = req_lib.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {groq_key}",
+                "Content-Type":  "application/json",
+            },
+            json={
+                "model": "llama-3.3-70b-versatile",
+                "messages": [
+                    {"role": "system", "content": PROMPT_SISTEMA},
+                    {"role": "user",   "content": prompt},
+                ],
+                "temperature":     0.1,
+                "max_tokens":      800,
+                "response_format": {"type": "json_object"},
+            },
+            timeout=30,
         )
-        resultado = json.loads(respuesta.choices[0].message.content)
+        respuesta.raise_for_status()
+        resultado = json.loads(respuesta.json()["choices"][0]["message"]["content"])
         return JSONResponse(resultado)
 
     except json.JSONDecodeError as e:

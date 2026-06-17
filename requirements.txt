@@ -4,4 +4,4 @@ opensmile==2.6.0
 soundfile==0.12.1
 numpy==1.26.4
 python-multipart==0.0.9
-groq==0.11.0
+requests==2.32.3
