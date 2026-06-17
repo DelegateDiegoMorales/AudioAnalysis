@@ -181,6 +181,8 @@ async def analizar(audio: UploadFile = File(...)):
         tmp.write(contenido)
         ruta_tmp = tmp.name
 
+    ruta_analisis = ruta_tmp   # puede cambiar si normalizamos
+
     try:
         info     = sf.info(ruta_tmp)
         duracion = info.frames / info.samplerate
@@ -188,7 +190,17 @@ async def analizar(audio: UploadFile = File(...)):
         if duracion < 2.0:
             raise HTTPException(status_code=400, detail="Audio muy corto (mínimo 2 segundos).")
 
-        df = smile.process_file(ruta_tmp)
+        # ── Normalización de amplitud ─────────────────────────────────────
+        # Unity graba a nivel bajo (~0.001 peak). openSMILE no detecta voz
+        # si el pico es < 0.1. Normalizamos a 0.7 peak antes de analizar.
+        data, sr = sf.read(ruta_tmp, dtype="float32")
+        peak = float(np.max(np.abs(data)))
+        if 0 < peak < 0.15:
+            data = data / peak * 0.70
+            ruta_analisis = ruta_tmp + "_norm.wav"
+            sf.write(ruta_analisis, data, sr)
+
+        df = smile.process_file(ruta_analisis)
         if df.empty:
             raise HTTPException(status_code=422, detail="No se pudieron extraer features del audio.")
 
@@ -215,3 +227,5 @@ async def analizar(audio: UploadFile = File(...)):
 
     finally:
         os.unlink(ruta_tmp)
+        if ruta_analisis != ruta_tmp and os.path.exists(ruta_analisis):
+            os.unlink(ruta_analisis)
