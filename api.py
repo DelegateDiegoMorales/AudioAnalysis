@@ -1,20 +1,22 @@
 """
-api.py — API REST para análisis de audio con openSMILE
-Deploy en Render/Railway: recibe WAV, devuelve 7 scores prosódicos y emocionales.
+api.py — API REST para análisis de audio y texto con IA.
 
 ENDPOINTS:
-    GET  /health     → {"status": "ok"}
-    POST /analizar   → multipart WAV → JSON con scores de audio
+    GET  /health         → {"status": "ok"}
+    POST /analizar       → multipart WAV → 7 scores prosódicos (openSMILE)
+    POST /analizar-texto → JSON transcript → scores de habilidades y pitch (Groq/Llama)
 """
 
 import os
+import json
 import tempfile
 import numpy as np
 import soundfile as sf
 import opensmile
 
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.responses import JSONResponse
+from groq import Groq
 
 app = FastAPI(title="MentorIA Audio Analyzer", version="2.0")
 
@@ -216,3 +218,117 @@ async def analizar(audio: UploadFile = File(...)):
         os.unlink(ruta_tmp)
         if ruta_analisis != ruta_tmp and os.path.exists(ruta_analisis):
             os.unlink(ruta_analisis)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# /analizar-texto  — análisis de transcript con Groq / Llama 3.3
+# ─────────────────────────────────────────────────────────────────────────────
+
+PROMPT_SISTEMA = """Eres un evaluador experto en pitch de ventas y habilidades directivas.
+Analiza transcripts de conversaciones y devuelve SOLO un JSON válido. Sin texto extra antes ni después."""
+
+PROMPT_PLANTILLA = """Analiza este transcript de pitch de ventas:
+
+CONTEXTO:
+- Producto: {producto_nombre}
+- Descripción: {producto_descripcion}
+- Audiencia objetivo: {audiencia}
+
+TRANSCRIPT:
+{transcript}
+
+Devuelve EXACTAMENTE este JSON (reemplazá los valores, sin texto fuera del JSON):
+{{
+  "habilidades_directivas": {{
+    "toma_decisiones": 0,
+    "pensamiento_estrategico": 0,
+    "negociacion": 0,
+    "liderazgo": 0,
+    "orientacion_comercial": 0,
+    "analisis_riesgo": 0,
+    "resolucion_problemas": 0,
+    "priorizacion": 0
+  }},
+  "elementos_pitch": {{
+    "cliente_objetivo": false,
+    "problema_necesidad": false,
+    "solucion_propuesta": false,
+    "valor_diferenciador": false,
+    "justificacion_superioridad": false,
+    "beneficios_concretos": false,
+    "evidencia_ejemplos": false,
+    "llamado_accion": false,
+    "capacidad_sintesis": 0,
+    "estructura_mensaje": 0
+  }},
+  "score_global_texto": 0,
+  "feedback_principal": "máximo 2 oraciones con el feedback más útil"
+}}
+
+CRITERIOS DE EVALUACIÓN (scores 0-10, sé estricto):
+- toma_decisiones: ¿propone opciones claras, elige caminos, recomienda con criterio?
+- pensamiento_estrategico: ¿menciona visión a largo plazo, mercado, posicionamiento, competencia?
+- negociacion: ¿adapta la propuesta, es flexible, propone condiciones o acuerdos?
+- liderazgo: ¿transmite autoridad, compromiso, responsabilidad en su equipo?
+- orientacion_comercial: ¿habla de ROI, costos, rentabilidad, impacto de negocio?
+- analisis_riesgo: ¿menciona riesgos, garantías, contingencias, seguridad?
+- resolucion_problemas: ¿identifica el problema con precisión, propone solución ejecutable?
+- priorizacion: ¿menciona qué es lo más importante, qué hacer primero, foco?
+- cliente_objetivo: ¿identifica claramente a quién va dirigida la solución?
+- problema_necesidad: ¿describe el dolor o necesidad del cliente?
+- solucion_propuesta: ¿explica cómo funciona la solución?
+- valor_diferenciador: ¿menciona por qué es única o diferente a otras opciones?
+- justificacion_superioridad: ¿justifica por qué es mejor que la competencia?
+- beneficios_concretos: ¿menciona beneficios con números, % o ejemplos específicos?
+- evidencia_ejemplos: ¿incluye casos de uso, datos, testimonios o ejemplos concretos?
+- llamado_accion: ¿propone un siguiente paso o intenta cerrar la venta?
+- capacidad_sintesis: 10=muy conciso y claro, 0=verborrágico y confuso
+- estructura_mensaje: 10=flujo lógico problema→solución→beneficio→cierre, 0=sin estructura
+- score_global_texto: promedio ponderado de todas las dimensiones"""
+
+
+@app.post("/analizar-texto")
+async def analizar_texto(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Body debe ser JSON válido.")
+
+    transcript          = body.get("transcript", "").strip()
+    producto_nombre     = body.get("producto_nombre", "No especificado")
+    producto_descripcion = body.get("producto_descripcion", "No especificada")
+    audiencia           = body.get("audiencia", "No especificada")
+
+    if len(transcript) < 30:
+        raise HTTPException(status_code=400, detail="Transcript demasiado corto (mínimo 30 caracteres).")
+
+    groq_key = os.environ.get("GROQ_API_KEY", "")
+    if not groq_key:
+        raise HTTPException(status_code=500, detail="GROQ_API_KEY no configurada en el servidor.")
+
+    prompt = PROMPT_PLANTILLA.format(
+        producto_nombre=producto_nombre,
+        producto_descripcion=producto_descripcion,
+        audiencia=audiencia,
+        transcript=transcript[:6000],   # límite de seguridad (~4500 tokens)
+    )
+
+    try:
+        cliente = Groq(api_key=groq_key)
+        respuesta = cliente.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": PROMPT_SISTEMA},
+                {"role": "user",   "content": prompt},
+            ],
+            temperature=0.1,
+            max_tokens=800,
+            response_format={"type": "json_object"},
+        )
+        resultado = json.loads(respuesta.choices[0].message.content)
+        return JSONResponse(resultado)
+
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=500, detail=f"La IA devolvió JSON inválido: {e}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error Groq: {str(e)}")
