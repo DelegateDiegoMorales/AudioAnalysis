@@ -80,30 +80,31 @@ def calcular_scores(fd):
     energia = round(min((ln * 0.6 + fn * 0.4) * 10, 10.0), 2)
 
     # ── Monotonía (0-10, 10 = muy monótono) ───────────────────────────────
-    # Poca variabilidad de pitch = discurso plano
+    # f0_std bajo = pitch plano = monótono
+    # Rango natural: ~0.05 (muy plano) → ~0.50 (muy expresivo)
     f0_std    = fd.get("F0semitoneFrom27.5Hz_sma3nz_stddevNorm", 0.25)
-    mono_n    = float(np.clip(1.0 - (f0_std / 0.25), 0.0, 1.0))
+    mono_n    = float(np.clip(1.0 - (f0_std / 0.50), 0.0, 1.0))
     monotonia = round(mono_n * 10, 2)
 
     # ── Dinamismo vocal (0-10) ─────────────────────────────────────────────
-    # Variación de volumen + spectral flux = expresividad
-    loud_std  = fd.get("loudness_sma3_stddevNorm",     0.30)
-    flux_std  = fd.get("spectralFlux_sma3_stddevNorm", 0.30)
+    # stddev del volumen + spectral flux como proxies de expresividad
+    loud_std = fd.get("loudness_sma3_stddevNorm", 0.30)
+    # spectralFlux stddev puede no existir; usar amean como proxy
+    flux_val = fd.get("spectralFlux_sma3_stddevNorm",
+                      fd.get("spectralFlux_sma3_amean", 0.50))
     d_loud    = float(np.clip((loud_std - 0.10) / 0.50, 0.0, 1.0))
-    d_flux    = float(np.clip((flux_std - 0.05) / 0.50, 0.0, 1.0))
+    d_flux    = float(np.clip((flux_val  - 0.10) / 1.40, 0.0, 1.0))
     dinamismo = round((d_loud * 0.60 + d_flux * 0.40) * 10, 2)
 
-    # ── Velocidad del habla (0-10, ~5 = velocidad normal) ─────────────────
-    # VoicedSegmentsPerSec: ~2-3 = lento, 3-5 = normal, ≥5 = rápido
-    voiced_per_sec = fd.get("VoicedSegmentsPerSec", 3.5)
-    vel_n          = float(np.clip(voiced_per_sec / 6.0, 0.0, 1.0))
-    velocidad      = round(vel_n * 10, 2)
+    # ── Velocidad del habla (0-10, ~5 = normal) ───────────────────────────
+    # Neutral si VoicedSegmentsPerSec no existe en el feature set
+    vps = fd.get("VoicedSegmentsPerSec", None)
+    velocidad = 5.0 if vps is None else round(float(np.clip(vps / 6.0, 0.0, 1.0)) * 10, 2)
 
     # ── Ratio de pausas (0-10, 10 = muchas pausas largas) ─────────────────
-    # MeanUnvoicedSegmentLength en segundos
-    mean_unvoiced = fd.get("MeanUnvoicedSegmentLength", 0.15)
-    p_n           = float(np.clip((mean_unvoiced - 0.05) / 0.60, 0.0, 1.0))
-    ratio_pausas  = round(p_n * 10, 2)
+    # Neutral si MeanUnvoicedSegmentLength no existe
+    mun = fd.get("MeanUnvoicedSegmentLength", None)
+    ratio_pausas = 5.0 if mun is None else round(float(np.clip((mun - 0.05) / 0.60, 0.0, 1.0)) * 10, 2)
 
     return {
         "nerviosismo":  nerviosismo,
