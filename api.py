@@ -327,7 +327,7 @@ async def analizar_texto(request: Request):
                     {"role": "user",   "content": prompt},
                 ],
                 "temperature":     0.1,
-                "max_tokens":      800,
+                "max_tokens":      2000,
                 "response_format": {"type": "json_object"},
             },
             timeout=30,
