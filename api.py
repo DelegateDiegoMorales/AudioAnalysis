@@ -321,7 +321,7 @@ async def analizar_texto(request: Request):
                 "Content-Type":  "application/json",
             },
             json={
-                "model": "gpt-oss-120b",
+                "model": "openai/gpt-oss-120b",
                 "messages": [
                     {"role": "system", "content": PROMPT_SISTEMA},
                     {"role": "user",   "content": prompt},
