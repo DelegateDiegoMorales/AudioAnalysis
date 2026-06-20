@@ -3,8 +3,9 @@ api.py — API REST para análisis de audio y texto con IA.
 
 ENDPOINTS:
     GET  /health         → {"status": "ok"}
+    GET  /reporte        → HTML del reporte de evaluación (recibe datos vía hash #base64json)
     POST /analizar       → multipart WAV → 7 scores prosódicos (openSMILE)
-    POST /analizar-texto → JSON transcript → scores de habilidades y pitch (Groq/Llama)
+    POST /analizar-texto → JSON transcript → rúbrica pedagógica 4 dimensiones (Groq)
 """
 
 import os
@@ -15,7 +16,7 @@ import soundfile as sf
 import opensmile
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
 import requests as req_lib
 
 app = FastAPI(title="MentorIA Audio Analyzer", version="2.0")
@@ -151,6 +152,20 @@ def health():
     return {"status": "ok"}
 
 
+@app.get("/reporte", response_class=HTMLResponse)
+def reporte():
+    """
+    Sirve la página HTML de reporte de evaluación.
+    Unity llama: Application.OpenURL(apiUrl + "/reporte#" + Base64(jsonData))
+    El HTML lee el hash y renderiza el reporte sin necesidad de estado en servidor.
+    """
+    ruta = os.path.join(os.path.dirname(__file__), "reporte.html")
+    if not os.path.exists(ruta):
+        raise HTTPException(status_code=404, detail="reporte.html no encontrado junto a api.py")
+    with open(ruta, "r", encoding="utf-8") as f:
+        return HTMLResponse(content=f.read())
+
+
 @app.post("/analizar")
 async def analizar(audio: UploadFile = File(...)):
     if not audio.filename.lower().endswith(".wav"):
@@ -221,70 +236,139 @@ async def analizar(audio: UploadFile = File(...)):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# /analizar-texto  — análisis de transcript con Groq / Llama 3.3
+# /analizar-texto  — rúbrica pedagógica 4 dimensiones (Groq)
+#
+# Basada en la rúbrica de Catalina / USS:
+#   4 dimensiones × máx 5 pts = 20 pts total
+#   Básico=1pt, Intermedio=3pts, Avanzado=5pts
+#   + KPIs de pitch (booleanos con evidencia)
+#   + Competencias empresariales (3 niveles)
+#   + Feedback en 3 bloques pedagógicos
 # ─────────────────────────────────────────────────────────────────────────────
 
-PROMPT_SISTEMA = """Eres un evaluador experto en pitch de ventas y habilidades directivas.
-Analiza transcripts de conversaciones y devuelve SOLO un JSON válido. Sin texto extra antes ni después."""
+PROMPT_SISTEMA = """Eres un evaluador pedagógico experto en pitch de emprendimiento.
+Analizas transcripts y devuelves SOLO un JSON válido, sin texto extra antes ni después."""
 
-PROMPT_PLANTILLA = """Analiza este transcript de pitch de ventas:
+PROMPT_PLANTILLA = """Evalúa este transcript de pitch de emprendimiento según la rúbrica pedagógica indicada.
 
-CONTEXTO:
-- Producto: {producto_nombre}
+CONTEXTO DEL EJERCICIO:
+- Producto / Emprendimiento: {producto_nombre}
 - Descripción: {producto_descripcion}
-- Audiencia objetivo: {audiencia}
+- Audiencia: {audiencia}
 
 TRANSCRIPT:
 {transcript}
 
-Devuelve EXACTAMENTE este JSON (reemplazá los valores, sin texto fuera del JSON):
+═══════════════════════════════════════════════════════════
+RÚBRICA DE EVALUACIÓN — devuelve puntajes 1, 3 o 5 únicamente
+═══════════════════════════════════════════════════════════
+
+DIMENSIÓN 1 — INICIO DEL PITCH (máx 5 pts)
+Evalúa: nombre del emprendimiento/producto, cliente objetivo, problema, solución.
+  Básico    (1): No nombra producto, no define cliente, problema ni solución.
+  Intermedio(3): Nombra algo, pero no conecta claramente los 4 elementos.
+  Avanzado  (5): Presenta nombre, cliente objetivo, problema y solución con claridad.
+
+DIMENSIÓN 2 — DESARROLLO Y PROPUESTA DE VALOR (máx 5 pts)
+Evalúa: por qué la solución es mejor que alternativas, beneficios concretos con ejemplos.
+  Básico    (1): Nombra el problema o características, sin justificar valor ni dar beneficios.
+  Intermedio(3): Justifica parcialmente, pero beneficios generales o sin ejemplos concretos.
+  Avanzado  (5): Justifica superioridad, nombra beneficios concretos y usa ejemplos o datos.
+
+DIMENSIÓN 3 — CIERRE, OBJECIONES Y ORIENTACIÓN COMERCIAL (máx 5 pts)
+Evalúa: llamado a la acción, respuesta a preguntas/objeciones, orientación comercial/negociación.
+  Básico    (1): No cierra, no responde objeciones, evade o no hace pedido al inversionista.
+  Intermedio(3): Responde algunas objeciones, pero sin cierre concreto o negociación débil.
+  Avanzado  (5): Cierra con solicitud concreta, responde objeciones y negocia con criterio.
+
+DIMENSIÓN 4 — COMUNICACIÓN, PRESENCIA Y MANEJO DE PRESIÓN (máx 5 pts)
+Evalúa: claridad verbal, ritmo, muletillas, seguridad, escucha activa, control emocional.
+  Básico    (1): Discurso confuso, muchas muletillas, ritmo inadecuado, alto nerviosismo.
+  Intermedio(3): Comunicación comprensible, pausas, muletillas moderadas, seguridad variable.
+  Avanzado  (5): Habla claro, buen ritmo, seguridad, escucha activa, manejo de presión.
+
+═══════════════════════════════════════════════════════════
+KPIs DE PITCH — detectar presencia (logrado/en_desarrollo/por_reforzar)
+═══════════════════════════════════════════════════════════
+  logrado:       el elemento aparece claramente en el transcript
+  en_desarrollo: aparece parcialmente o con poca claridad
+  por_reforzar:  ausente, muy débil o confuso
+
+KPI_01 cliente_objetivo      — ¿nombra quién compraría o usaría el producto?
+KPI_02 problema_necesidad    — ¿describe el dolor o necesidad que resuelve?
+KPI_03 solucion_propuesta    — ¿explica cómo funciona la solución?
+KPI_04 propuesta_valor       — ¿menciona qué lo hace valioso o único?
+KPI_05 por_que_es_mejor      — ¿justifica superioridad sobre alternativas actuales?
+KPI_06 beneficios_concretos  — ¿nombra beneficios con datos, números o ejemplos?
+KPI_07 evidencia_ejemplos    — ¿incluye casos, testimonios, pilotos o datos reales?
+KPI_08 llamado_accion        — ¿hace un pedido concreto al inversionista?
+
+═══════════════════════════════════════════════════════════
+COMPETENCIAS EMPRESARIALES — evaluar con logrado/en_desarrollo/por_reforzar
+═══════════════════════════════════════════════════════════
+  orientacion_comercial   — habla de ROI, costos, rentabilidad o impacto económico
+  negociacion             — propone condiciones, es flexible, adapta la oferta
+  pensamiento_estrategico — visión a largo plazo, mercado, posicionamiento
+  toma_decisiones         — propone caminos claros, recomienda con criterio
+  priorizacion            — identifica lo más importante, propone foco
+  analisis_riesgo         — menciona riesgos, contingencias o garantías
+  liderazgo               — transmite autoridad, compromiso, responsabilidad
+  etica_profesional       — transparente, honesto, responsable en su discurso
+
+═══════════════════════════════════════════════════════════
+DEVUELVE EXACTAMENTE ESTE JSON (sin texto fuera del JSON):
+═══════════════════════════════════════════════════════════
 {{
-  "habilidades_directivas": {{
-    "toma_decisiones": 0,
-    "pensamiento_estrategico": 0,
-    "negociacion": 0,
-    "liderazgo": 0,
-    "orientacion_comercial": 0,
-    "analisis_riesgo": 0,
-    "resolucion_problemas": 0,
-    "priorizacion": 0
+  "dimensiones": {{
+    "inicio_pitch":         0,
+    "desarrollo_propuesta": 0,
+    "cierre_objeciones":    0,
+    "comunicacion_presencia": 0
   }},
-  "elementos_pitch": {{
-    "cliente_objetivo": false,
-    "problema_necesidad": false,
-    "solucion_propuesta": false,
-    "valor_diferenciador": false,
-    "justificacion_superioridad": false,
-    "beneficios_concretos": false,
-    "evidencia_ejemplos": false,
-    "llamado_accion": false,
-    "capacidad_sintesis": 0,
-    "estructura_mensaje": 0
+  "pitch_items": {{
+    "cliente_objetivo":     "por_reforzar",
+    "problema_necesidad":   "por_reforzar",
+    "solucion_propuesta":   "por_reforzar",
+    "propuesta_valor":      "por_reforzar",
+    "por_que_es_mejor":     "por_reforzar",
+    "beneficios_concretos": "por_reforzar",
+    "evidencia_ejemplos":   "por_reforzar",
+    "llamado_accion":       "por_reforzar"
   }},
-  "score_global_texto": 0,
-  "feedback_principal": "máximo 2 oraciones con el feedback más útil"
+  "competencias_items": {{
+    "orientacion_comercial":  "por_reforzar",
+    "negociacion":            "por_reforzar",
+    "pensamiento_estrategico":"por_reforzar",
+    "toma_decisiones":        "por_reforzar",
+    "priorizacion":           "por_reforzar",
+    "analisis_riesgo":        "por_reforzar",
+    "liderazgo":              "por_reforzar",
+    "etica_profesional":      "por_reforzar"
+  }},
+  "evidencias": {{
+    "inicio_pitch":           "una oración con lo que detectaste",
+    "desarrollo_propuesta":   "una oración con lo que detectaste",
+    "cierre_objeciones":      "una oración con lo que detectaste",
+    "comunicacion_presencia": "una oración con lo que detectaste"
+  }},
+  "puntaje_total": 0,
+  "porcentaje": 0,
+  "nivel_global": "Básico",
+  "feedback": {{
+    "fortaleza":          "1 oración: lo que hizo bien",
+    "mejora_prioritaria": "1 oración: lo más urgente a mejorar",
+    "proximo_intento":    "1 oración: recomendación concreta para la siguiente práctica"
+  }}
 }}
 
-CRITERIOS DE EVALUACIÓN (scores 0-10, sé estricto):
-- toma_decisiones: ¿propone opciones claras, elige caminos, recomienda con criterio?
-- pensamiento_estrategico: ¿menciona visión a largo plazo, mercado, posicionamiento, competencia?
-- negociacion: ¿adapta la propuesta, es flexible, propone condiciones o acuerdos?
-- liderazgo: ¿transmite autoridad, compromiso, responsabilidad en su equipo?
-- orientacion_comercial: ¿habla de ROI, costos, rentabilidad, impacto de negocio?
-- analisis_riesgo: ¿menciona riesgos, garantías, contingencias, seguridad?
-- resolucion_problemas: ¿identifica el problema con precisión, propone solución ejecutable?
-- priorizacion: ¿menciona qué es lo más importante, qué hacer primero, foco?
-- cliente_objetivo: ¿identifica claramente a quién va dirigida la solución?
-- problema_necesidad: ¿describe el dolor o necesidad del cliente?
-- solucion_propuesta: ¿explica cómo funciona la solución?
-- valor_diferenciador: ¿menciona por qué es única o diferente a otras opciones?
-- justificacion_superioridad: ¿justifica por qué es mejor que la competencia?
-- beneficios_concretos: ¿menciona beneficios con números, % o ejemplos específicos?
-- evidencia_ejemplos: ¿incluye casos de uso, datos, testimonios o ejemplos concretos?
-- llamado_accion: ¿propone un siguiente paso o intenta cerrar la venta?
-- capacidad_sintesis: 10=muy conciso y claro, 0=verborrágico y confuso
-- estructura_mensaje: 10=flujo lógico problema→solución→beneficio→cierre, 0=sin estructura
-- score_global_texto: promedio ponderado de todas las dimensiones"""
+REGLAS:
+- puntaje_total = suma de los 4 valores de dimensiones (min 4, max 20)
+- porcentaje = round(puntaje_total / 20 * 100)
+- nivel_global: "Básico" si puntaje_total ≤ 9 | "Intermedio" si 10–17 | "Avanzado" si ≥ 18
+- dimensiones solo puede tener valores 1, 3 o 5
+- pitch_items y competencias_items solo pueden ser "logrado", "en_desarrollo" o "por_reforzar"
+- feedback debe ser breve, pedagógico y accionable (no punitivo)
+- Si el transcript incluye Q&A, evaluar la Dimensión 3 (cierre/objeciones) también con esas respuestas"""
 
 
 @app.post("/analizar-texto")
@@ -294,10 +378,10 @@ async def analizar_texto(request: Request):
     except Exception:
         raise HTTPException(status_code=400, detail="Body debe ser JSON válido.")
 
-    transcript          = body.get("transcript", "").strip()
-    producto_nombre     = body.get("producto_nombre", "No especificado")
+    transcript           = body.get("transcript", "").strip()
+    producto_nombre      = body.get("producto_nombre",      "No especificado")
     producto_descripcion = body.get("producto_descripcion", "No especificada")
-    audiencia           = body.get("audiencia", "No especificada")
+    audiencia            = body.get("audiencia",            "No especificada")
 
     if len(transcript) < 30:
         raise HTTPException(status_code=400, detail="Transcript demasiado corto (mínimo 30 caracteres).")
@@ -310,7 +394,7 @@ async def analizar_texto(request: Request):
         producto_nombre=producto_nombre,
         producto_descripcion=producto_descripcion,
         audiencia=audiencia,
-        transcript=transcript[:6000],   # límite de seguridad (~4500 tokens)
+        transcript=transcript[:6000],
     )
 
     try:
