@@ -391,12 +391,6 @@ DEVUELVE EXACTAMENTE ESTE JSON (sin texto fuera del JSON):
     "liderazgo":              "por_reforzar",
     "etica_profesional":      "por_reforzar"
   }},
-  "evidencias": {{
-    "inicio_pitch":           "una oración con lo que detectaste",
-    "desarrollo_propuesta":   "una oración con lo que detectaste",
-    "cierre_objeciones":      "una oración con lo que detectaste",
-    "comunicacion_presencia": "una oración con lo que detectaste"
-  }},
   "puntaje_total": 0,
   "porcentaje": 0,
   "nivel_global": "Básico",
@@ -414,6 +408,10 @@ REGLAS:
 - dimensiones solo puede tener valores 1, 3 o 5
 - pitch_items y competencias_items solo pueden ser "logrado", "en_desarrollo" o "por_reforzar"
 - feedback debe ser breve, pedagógico y accionable (no punitivo)
+- feedback NUNCA puede quedar vacío ni faltar — completá fortaleza, mejora_prioritaria y
+  proximo_intento siempre, aunque el pitch sea muy básico. Es el campo MÁS importante de
+  toda la respuesta: si te queda poco espacio, recortá detalle en otros campos, pero
+  nunca dejes feedback incompleto.
 - Si el transcript incluye Q&A, evaluar la Dimensión 3 (cierre/objeciones) también con esas respuestas"""
 
 
@@ -457,7 +455,7 @@ async def analizar_texto(request: Request):
                     {"role": "user",   "content": prompt},
                 ],
                 "temperature":     0.1,
-                "max_tokens":      2000,
+                "max_tokens":      3000,
                 "response_format": {"type": "json_object"},
             },
             timeout=30,
