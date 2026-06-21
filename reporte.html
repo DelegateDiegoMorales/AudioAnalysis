@@ -370,21 +370,53 @@ function esc(s) {
 // También acepta ?data= como fallback
 // ─────────────────────────────────────────────────────────────────
 function loadData() {
-  // 1. Hash fragment (#base64json)
+  // 1. Hash fragment (#base64json) — link puntual con datos fijos (no se actualiza solo)
   const hash = window.location.hash.slice(1);
   if (hash) {
     try { render(JSON.parse(atob(hash))); return; } catch(e) { console.warn('Hash decode error', e); }
   }
 
-  // 2. Query param (?data=base64json)
+  // 2. Query param (?data=base64json) — idem, fallback puntual
   const params = new URLSearchParams(window.location.search);
   const qdata  = params.get('data');
   if (qdata) {
     try { render(JSON.parse(atob(qdata))); return; } catch(e) { console.warn('Query decode error', e); }
   }
 
-  // 3. Demo data (si no hay datos reales)
-  render(DEMO);
+  // 3. Modo en vivo — sin datos en el link: el Quest no abre navegador, así
+  //    que esta pestaña (en otra compu/tablet) se queda consultando al
+  //    servidor el último reporte que Unity haya publicado y se refresca
+  //    sola apenas hay uno nuevo.
+  iniciarModoEnVivo();
+}
+
+let _firmaUltimoRenderizado = null;
+
+function iniciarModoEnVivo() {
+  consultarUltimoReporte(true);
+  setInterval(() => consultarUltimoReporte(false), 4000);
+}
+
+async function consultarUltimoReporte(esPrimeraCarga) {
+  try {
+    const res = await fetch('/reporte/ultimo', { cache: 'no-store' });
+
+    if (res.status === 204) {
+      if (esPrimeraCarga) render(DEMO);
+      return;
+    }
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+
+    const data = await res.json();
+    // Evita re-renderizar (y resetear el scroll) si es el mismo reporte de siempre.
+    const firma = JSON.stringify([data.nombre, data.fecha, data.intento, data.puntaje_total]);
+    if (firma === _firmaUltimoRenderizado) return;
+    _firmaUltimoRenderizado = firma;
+    render(data);
+  } catch (e) {
+    console.warn('No se pudo consultar /reporte/ultimo', e);
+    if (esPrimeraCarga) render(DEMO);
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────

@@ -2,15 +2,19 @@
 api.py — API REST para análisis de audio y texto con IA.
 
 ENDPOINTS:
-    GET  /health         → {"status": "ok"}
-    GET  /reporte        → HTML del reporte de evaluación (recibe datos vía hash #base64json)
-    POST /analizar       → multipart WAV → 7 scores prosódicos (openSMILE)
-    POST /analizar-texto → JSON transcript → rúbrica pedagógica 4 dimensiones (Groq)
+    GET  /health             → {"status": "ok"}
+    GET  /reporte             → HTML del reporte de evaluación (recibe datos vía hash #base64json,
+                                 o en modo en vivo si se abre sin hash — ver /reporte/ultimo)
+    POST /reporte/publicar    → Unity publica acá el JSON del último reporte analizado
+    GET  /reporte/ultimo      → último reporte publicado (polling desde reporte.html)
+    POST /analizar            → multipart WAV → 7 scores prosódicos (openSMILE)
+    POST /analizar-texto      → JSON transcript → rúbrica pedagógica 4 dimensiones (Groq)
 """
 
 import os
 import json
 import tempfile
+import threading
 import numpy as np
 import soundfile as sf
 import opensmile
@@ -20,6 +24,18 @@ from fastapi.responses import JSONResponse, HTMLResponse
 import requests as req_lib
 
 app = FastAPI(title="MentorIA Audio Analyzer", version="2.0")
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Estado del "último reporte publicado" — en memoria, no persiste entre
+# reinicios del proceso (si Render redespliega o el free-tier se duerme y
+# despierta, se pierde). Es intencional: solo sirve para que la página
+# /reporte en modo en vivo (sin hash) pueda mostrar la sesión más reciente
+# sin que el dispositivo VR (Quest) tenga que abrir un navegador — Unity
+# manda el JSON acá por POST, y cualquier otra pantalla con /reporte
+# abierto lo va a ver solo, vía polling.
+# ─────────────────────────────────────────────────────────────────────────────
+_ultimo_reporte_lock = threading.Lock()
+_ultimo_reporte: dict | None = None
 
 # Inicializar openSMILE una sola vez al arrancar (costoso, no por request)
 smile = opensmile.Smile(
@@ -164,6 +180,36 @@ def reporte():
         raise HTTPException(status_code=404, detail="reporte.html no encontrado junto a api.py")
     with open(ruta, "r", encoding="utf-8") as f:
         return HTMLResponse(content=f.read())
+
+
+@app.post("/reporte/publicar")
+async def publicar_reporte(request: Request):
+    """
+    Unity manda acá el JSON completo del reporte (mismo shape que arma
+    ReporteBuilder.ConstruirJson en el cliente) apenas termina de analizar
+    una sesión — no hace falta abrir ningún navegador desde el Quest, el
+    dato queda disponible para quien tenga /reporte abierto en otra
+    pantalla (vía /reporte/ultimo, con polling).
+    """
+    global _ultimo_reporte
+    try:
+        data = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="JSON inválido")
+
+    with _ultimo_reporte_lock:
+        _ultimo_reporte = data
+
+    return {"ok": True}
+
+
+@app.get("/reporte/ultimo")
+def obtener_ultimo_reporte():
+    """Devuelve el último reporte publicado, o 204 (sin cuerpo) si todavía no hay ninguno."""
+    with _ultimo_reporte_lock:
+        if _ultimo_reporte is None:
+            return JSONResponse(status_code=204, content=None)
+        return JSONResponse(content=_ultimo_reporte)
 
 
 @app.post("/analizar")
