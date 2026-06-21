@@ -1,0 +1,6 @@
+# Unity asset metadata — no pertenece al repo del backend
+*.meta
+
+# Python
+__pycache__/
+*.pyc

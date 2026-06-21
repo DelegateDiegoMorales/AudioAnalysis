@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reporte · Simulador Pitch</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
+      background: #eef0f5;
+      min-height: 100vh;
+      padding: 28px 16px 40px;
+      color: #1a1a2e;
+    }
+
+    .container { max-width: 980px; margin: 0 auto; }
+
+    /* ── App header ── */
+    .app-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 22px;
+    }
+    .app-icon {
+      width: 50px; height: 50px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, #7c3aed, #5b21b6);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .app-icon svg { width: 26px; height: 26px; fill: white; }
+    .app-title   { font-size: 19px; font-weight: 800; color: #1a1a2e; }
+    .app-subtitle { font-size: 13px; color: #8b93a7; margin-top: 2px; }
+
+    /* ── Cards base ── */
+    .card {
+      background: white;
+      border-radius: 18px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+    }
+
+    /* ── Student card ── */
+    .student-card {
+      padding: 20px 26px;
+      margin-bottom: 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+    .student-name { font-size: 21px; font-weight: 800; }
+    .student-meta { font-size: 13px; color: #8b93a7; margin-top: 4px; }
+    .badge-evaluado {
+      background: #ecfdf5; color: #059669;
+      border: 1px solid #a7f3d0;
+      font-size: 13px; font-weight: 700;
+      padding: 6px 18px; border-radius: 30px;
+      white-space: nowrap;
+    }
+
+    /* ── Stats row ── */
+    .stats-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+    .stat-card { padding: 22px 20px; text-align: center; }
+    .stat-label {
+      font-size: 10px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.1em;
+      color: #9ca3af; margin-bottom: 10px;
+    }
+    .stat-number {
+      font-size: 46px; font-weight: 900; line-height: 1;
+      color: #1a1a2e;
+    }
+    .stat-number .denom { font-size: 26px; font-weight: 600; color: #c4c9d6; }
+    .stat-number .pct-sign { font-size: 26px; font-weight: 700; color: #9ca3af; }
+    .nivel-pill {
+      display: inline-block;
+      font-size: 20px; font-weight: 800;
+      padding: 10px 24px; border-radius: 12px;
+      margin-top: 4px;
+    }
+    .nivel-basico     { background: #fef2f2; color: #dc2626; }
+    .nivel-intermedio { background: #fffbeb; color: #d97706; }
+    .nivel-avanzado   { background: #f0fdf4; color: #16a34a; }
+
+    /* ── Legend ── */
+    .legend {
+      display: flex; justify-content: center; gap: 24px;
+      margin-bottom: 14px;
+      font-size: 13px; color: #6b7280;
+    }
+    .legend-item { display: flex; align-items: center; gap: 7px; }
+    .dot { width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0; }
+    .d-logrado    { background: #22c55e; }
+    .d-desarrollo { background: #f59e0b; }
+    .d-reforzar   { background: #ef4444; }
+
+    /* ── 2×2 sections grid ── */
+    .sections-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+    .section-card { padding: 22px 24px; }
+    .section-header {
+      display: flex; justify-content: space-between;
+      align-items: flex-start; gap: 8px; margin-bottom: 16px;
+    }
+    .section-name { font-size: 15px; font-weight: 800; }
+    .section-desc { font-size: 12px; color: #9ca3af; margin-top: 3px; }
+    .section-score {
+      background: #f3f0ff; color: #7c3aed;
+      font-size: 13px; font-weight: 700;
+      padding: 4px 13px; border-radius: 20px;
+      white-space: nowrap; flex-shrink: 0;
+    }
+    .item-list { list-style: none; }
+    .item-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 5px 0; font-size: 14px; color: #374151;
+      border-bottom: 1px solid #f9fafb;
+    }
+    .item-row:last-child { border-bottom: none; }
+    .item-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+    /* ── Feedback ── */
+    .feedback-section { margin-bottom: 20px; }
+    .feedback-title {
+      font-size: 18px; font-weight: 800;
+      color: #1a1a2e; margin-bottom: 12px;
+    }
+    .feedback-grid {
+      display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px;
+    }
+    .fb-card { border-radius: 14px; padding: 18px 20px; }
+    .fb-fortaleza { background: #f0fdf4; border: 1.5px solid #86efac; }
+    .fb-mejora    { background: #fffbeb; border: 1.5px solid #fcd34d; }
+    .fb-proximo   { background: #eff6ff; border: 1.5px solid #93c5fd; }
+    .fb-tag {
+      font-size: 10px; font-weight: 800;
+      text-transform: uppercase; letter-spacing: 0.1em;
+      margin-bottom: 10px;
+    }
+    .tag-fortaleza { color: #16a34a; }
+    .tag-mejora    { color: #d97706; }
+    .tag-proximo   { color: #2563eb; }
+    .fb-text { font-size: 14px; color: #374151; line-height: 1.55; }
+
+    /* ── Buttons ── */
+    .buttons-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .btn {
+      width: 100%; padding: 16px;
+      font-size: 16px; font-weight: 700;
+      border: none; border-radius: 14px;
+      cursor: pointer; transition: opacity 0.15s, transform 0.1s;
+    }
+    .btn:active { transform: scale(0.98); }
+    .btn-primary { background: linear-gradient(135deg, #7c3aed, #5b21b6); color: white; }
+    .btn-primary:hover { opacity: 0.92; }
+    .btn-secondary {
+      background: white; color: #374151;
+      border: 1.5px solid #e5e7eb;
+    }
+    .btn-secondary:hover { background: #f9fafb; }
+
+    /* ── Print ── */
+    @media print {
+      body { background: white; padding: 0; }
+      .buttons-row { display: none; }
+      .card { box-shadow: none; border: 1px solid #e5e7eb; }
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 640px) {
+      .stats-row, .sections-grid, .feedback-grid, .buttons-row {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <!-- App header -->
+  <div class="app-header">
+    <div class="app-icon">
+      <!-- Pitch / microphone icon -->
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 1a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3zm-1 3a1 1 0 0 1 2 0v7a1 1 0 0 1-2 0V4zm-6 7a7 7 0 0 0 14 0h-2a5 5 0 0 1-10 0H5zm7 9v-2.07A7.01 7.01 0 0 0 18.93 13H17a5 5 0 0 1-10 0H5.07A7.01 7.01 0 0 0 11 18.93V21H9v2h6v-2h-2z"/>
+      </svg>
+    </div>
+    <div>
+      <div class="app-title">Simulador Pitch</div>
+      <div class="app-subtitle">Reporte de evaluación · by Delégate</div>
+    </div>
+  </div>
+
+  <!-- Student card -->
+  <div class="card student-card">
+    <div>
+      <div class="student-name" id="nombre">—</div>
+      <div class="student-meta" id="meta">—</div>
+    </div>
+    <span class="badge-evaluado">Evaluado</span>
+  </div>
+
+  <!-- Stats row -->
+  <div class="stats-row">
+    <div class="card stat-card">
+      <div class="stat-label">Puntaje Total</div>
+      <div class="stat-number">
+        <span id="puntaje-total">—</span><span class="denom">/20</span>
+      </div>
+    </div>
+    <div class="card stat-card">
+      <div class="stat-label">Porcentaje</div>
+      <div class="stat-number">
+        <span id="porcentaje">—</span><span class="pct-sign">%</span>
+      </div>
+    </div>
+    <div class="card stat-card">
+      <div class="stat-label">Nivel Global</div>
+      <span class="nivel-pill" id="nivel-pill">—</span>
+    </div>
+  </div>
+
+  <!-- Legend -->
+  <div class="legend">
+    <div class="legend-item"><div class="dot d-logrado"></div>Logrado</div>
+    <div class="legend-item"><div class="dot d-desarrollo"></div>En desarrollo</div>
+    <div class="legend-item"><div class="dot d-reforzar"></div>Por reforzar</div>
+  </div>
+
+  <!-- Sections 2×2 -->
+  <div class="sections-grid" id="sections-grid"></div>
+
+  <!-- Feedback IA -->
+  <div class="feedback-section">
+    <div class="feedback-title">Feedback IA</div>
+    <div class="feedback-grid">
+      <div class="fb-card fb-fortaleza">
+        <div class="fb-tag tag-fortaleza">Fortaleza</div>
+        <div class="fb-text" id="fb-fortaleza">—</div>
+      </div>
+      <div class="fb-card fb-mejora">
+        <div class="fb-tag tag-mejora">Mejora prioritaria</div>
+        <div class="fb-text" id="fb-mejora">—</div>
+      </div>
+      <div class="fb-card fb-proximo">
+        <div class="fb-tag tag-proximo">Próximo intento</div>
+        <div class="fb-text" id="fb-proximo">—</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Buttons -->
+  <div class="buttons-row">
+    <button class="btn btn-primary" id="btn-repetir">Repetir práctica</button>
+    <button class="btn btn-secondary" onclick="window.print()">Exportar PDF</button>
+  </div>
+
+</div><!-- /container -->
+
+<script>
+// ─────────────────────────────────────────────────────────────────
+// Colores por nivel
+// ─────────────────────────────────────────────────────────────────
+const DOT = {
+  logrado:       '#22c55e',
+  en_desarrollo: '#f59e0b',
+  por_reforzar:  '#ef4444',
+};
+
+// ─────────────────────────────────────────────────────────────────
+// Renderizar
+// ─────────────────────────────────────────────────────────────────
+function render(d) {
+  // Header del estudiante
+  document.getElementById('nombre').textContent = d.nombre || 'Sin nombre';
+  const partesMeta = [
+    d.escenario,
+    d.intento != null ? 'Intento ' + d.intento : null,
+    d.fecha
+  ].filter(Boolean);
+  document.getElementById('meta').textContent = partesMeta.join(' · ');
+
+  // Stats
+  document.getElementById('puntaje-total').textContent = d.puntaje_total ?? '—';
+  document.getElementById('porcentaje').textContent    = d.porcentaje    ?? '—';
+
+  const pill = document.getElementById('nivel-pill');
+  pill.textContent = d.nivel_global || '—';
+  pill.className = 'nivel-pill ' + nivelClass(d.nivel_global);
+
+  // Secciones
+  renderSecciones(d.secciones || []);
+
+  // Feedback
+  document.getElementById('fb-fortaleza').textContent = d.feedback?.fortaleza         || '—';
+  document.getElementById('fb-mejora').textContent    = d.feedback?.mejora_prioritaria || '—';
+  document.getElementById('fb-proximo').textContent   = d.feedback?.proximo_intento    || '—';
+
+  // Botón repetir — si Unity abre esta página en una pestaña propia, window.close() la cierra
+  document.getElementById('btn-repetir').onclick = () => {
+    if (window.opener) { window.close(); }
+    else { history.back(); }
+  };
+}
+
+function nivelClass(nivel) {
+  if (!nivel) return '';
+  if (nivel.toLowerCase().includes('básico'))    return 'nivel-basico';
+  if (nivel.toLowerCase().includes('avanzado'))  return 'nivel-avanzado';
+  return 'nivel-intermedio';
+}
+
+function renderSecciones(secciones) {
+  const grid = document.getElementById('sections-grid');
+  grid.innerHTML = secciones.map(sec => {
+    const items = sec.items || [];
+    // Calcular score de la sección: logrado=2, en_desarrollo=1, por_reforzar=0
+    const puntaje = items.reduce((acc, it) => {
+      if (it.nivel === 'logrado')       return acc + 2;
+      if (it.nivel === 'en_desarrollo') return acc + 1;
+      return acc;
+    }, 0);
+    // Usar puntaje/maximo del JSON si vienen, sino calcular
+    const pts = sec.puntaje != null ? sec.puntaje : puntaje;
+    const max = sec.maximo  != null ? sec.maximo  : items.length * 2;
+
+    return `
+      <div class="card section-card">
+        <div class="section-header">
+          <div>
+            <div class="section-name">${esc(sec.nombre)}</div>
+            <div class="section-desc">${esc(sec.descripcion || '')}</div>
+          </div>
+          <div class="section-score">${pts}/${max} pts</div>
+        </div>
+        <ul class="item-list">
+          ${items.map(it => `
+            <li class="item-row">
+              <div class="item-dot" style="background:${DOT[it.nivel] || '#d1d5db'}"></div>
+              ${esc(it.nombre)}
+            </li>`).join('')}
+        </ul>
+      </div>`;
+  }).join('');
+}
+
+function esc(s) {
+  return String(s || '')
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Carga de datos
+// Unity envía: Application.OpenURL(url + "#" + Base64(JSON))
+// También acepta ?data= como fallback
+// ─────────────────────────────────────────────────────────────────
+function loadData() {
+  // 1. Hash fragment (#base64json)
+  const hash = window.location.hash.slice(1);
+  if (hash) {
+    try { render(JSON.parse(atob(hash))); return; } catch(e) { console.warn('Hash decode error', e); }
+  }
+
+  // 2. Query param (?data=base64json)
+  const params = new URLSearchParams(window.location.search);
+  const qdata  = params.get('data');
+  if (qdata) {
+    try { render(JSON.parse(atob(qdata))); return; } catch(e) { console.warn('Query decode error', e); }
+  }
+
+  // 3. Demo data (si no hay datos reales)
+  render(DEMO);
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Datos de demo (coinciden exactamente con el mockup del cliente)
+// ─────────────────────────────────────────────────────────────────
+const DEMO = {
+  nombre: 'Javiera Soto Méndez',
+  escenario: 'Robot doméstico',
+  intento: 3,
+  fecha: '17 jun 2026',
+  puntaje_total: 14,
+  porcentaje: 70,
+  nivel_global: 'Intermedio',
+  secciones: [
+    {
+      nombre: 'PITCH',
+      descripcion: 'Contenido del discurso (transcripción)',
+      items: [
+        { nombre: 'Cliente objetivo',              nivel: 'logrado'       },
+        { nombre: 'Problema o necesidad',          nivel: 'logrado'       },
+        { nombre: 'Solución propuesta',            nivel: 'logrado'       },
+        { nombre: 'Propuesta de valor diferenciadora', nivel: 'en_desarrollo' },
+        { nombre: 'Por qué su solución es mejor',  nivel: 'en_desarrollo' },
+        { nombre: 'Beneficios concretos',          nivel: 'logrado'       },
+        { nombre: 'Evidencia o ejemplos',          nivel: 'por_reforzar'  },
+        { nombre: 'Llamado a la acción / cierre',  nivel: 'por_reforzar'  }
+      ]
+    },
+    {
+      nombre: 'Comunicación',
+      descripcion: 'Voz y estructura (audio + transcripción)',
+      items: [
+        { nombre: 'Claridad verbal',       nivel: 'logrado'       },
+        { nombre: 'Ritmo del habla',       nivel: 'logrado'       },
+        { nombre: 'Uso de muletillas',     nivel: 'en_desarrollo' },
+        { nombre: 'Volumen',               nivel: 'logrado'       },
+        { nombre: 'Seguridad',             nivel: 'logrado'       },
+        { nombre: 'Estructura del mensaje',nivel: 'logrado'       },
+        { nombre: 'Capacidad de síntesis', nivel: 'en_desarrollo' },
+        { nombre: 'Persuasión',            nivel: 'en_desarrollo' }
+      ]
+    },
+    {
+      nombre: 'Comportamiento',
+      descripcion: 'Presencia y manejo de presión (VR + IA)',
+      items: [
+        { nombre: 'Postura',                  nivel: 'logrado'       },
+        { nombre: 'Contacto visual simulado', nivel: 'logrado'       },
+        { nombre: 'Manejo de presión',        nivel: 'en_desarrollo' },
+        { nombre: 'Reacción ante objeciones', nivel: 'en_desarrollo' },
+        { nombre: 'Control emocional',        nivel: 'logrado'       },
+        { nombre: 'Empatía',                  nivel: 'en_desarrollo' },
+        { nombre: 'Escucha activa',           nivel: 'por_reforzar'  }
+      ]
+    },
+    {
+      nombre: 'Competencias empresariales',
+      descripcion: 'Criterio de negocio (transcripción + IA)',
+      items: [
+        { nombre: 'Orientación comercial',    nivel: 'en_desarrollo' },
+        { nombre: 'Negociación',              nivel: 'por_reforzar'  },
+        { nombre: 'Pensamiento estratégico',  nivel: 'en_desarrollo' },
+        { nombre: 'Toma de decisiones',       nivel: 'logrado'       },
+        { nombre: 'Priorización',             nivel: 'en_desarrollo' },
+        { nombre: 'Análisis de riesgo',       nivel: 'por_reforzar'  },
+        { nombre: 'Liderazgo',                nivel: 'en_desarrollo' },
+        { nombre: 'Ética profesional',        nivel: 'logrado'       }
+      ]
+    }
+  ],
+  feedback: {
+    fortaleza:         'Presentó con claridad el cliente, el problema y la solución, con buena estructura y seguridad al hablar.',
+    mejora_prioritaria:'Falta diferenciación, evidencia con ejemplos y un cierre concreto con llamado a la acción.',
+    proximo_intento:   'Cierra con: por qué somos mejores + un beneficio con dato + un pedido claro al inversionista.'
+  }
+};
+
+loadData();
+</script>
+</body>
+</html>
