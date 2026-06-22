@@ -35,6 +35,24 @@
     .app-title   { font-size: 19px; font-weight: 800; color: #1a1a2e; }
     .app-subtitle { font-size: 13px; color: #8b93a7; margin-top: 2px; }
 
+    /* ── Botón "Actualizar" — fuerza un poll inmediato a /reporte/ultimo
+       en vez de esperar el intervalo de 4s, para cuando alguien quiere
+       confirmar a ojo que ya llegó el último reporte publicado. ── */
+    .btn-refresh {
+      margin-left: auto; flex-shrink: 0;
+      display: flex; align-items: center; gap: 6px;
+      background: white; border: 1.5px solid #e5e7eb;
+      border-radius: 999px; padding: 9px 16px;
+      font-size: 13px; font-weight: 700; color: #374151;
+      cursor: pointer; transition: opacity 0.15s, transform 0.1s, background 0.15s;
+    }
+    .btn-refresh:hover  { background: #f9fafb; }
+    .btn-refresh:active { transform: scale(0.96); }
+    .btn-refresh:disabled { opacity: 0.65; cursor: default; }
+    .btn-refresh .refresh-icon { width: 15px; height: 15px; fill: #7c3aed; flex-shrink: 0; }
+    .btn-refresh.is-loading .refresh-icon { animation: spin-refresh 0.7s linear infinite; }
+    @keyframes spin-refresh { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
     /* ── Cards base ── */
     .card {
       background: white;
@@ -211,6 +229,7 @@
     @media print {
       body { background: white; padding: 0; }
       .buttons-row { display: none; }
+      .btn-refresh { display: none; }
       .card { box-shadow: none; border: 1px solid #e5e7eb; }
       .qa-item { break-inside: avoid; }
     }
@@ -238,6 +257,12 @@
       <div class="app-title">Simulador Pitch</div>
       <div class="app-subtitle">Reporte de evaluación · by Delégate</div>
     </div>
+    <button class="btn-refresh" id="btn-refresh" onclick="forzarRecarga()" title="Forzar recarga del último reporte publicado">
+      <svg class="refresh-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M17.65 6.35A7.95 7.95 0 0 0 12 4a8 8 0 1 0 7.74 10h-2.08A6 6 0 1 1 12 6c1.65 0 3.13.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+      </svg>
+      <span id="btn-refresh-label">Actualizar</span>
+    </button>
   </div>
 
   <!-- Student card -->
@@ -477,6 +502,31 @@ let _firmaUltimoRenderizado = null;
 function iniciarModoEnVivo() {
   consultarUltimoReporte(true);
   setInterval(() => consultarUltimoReporte(false), 4000);
+}
+
+// Botón "Actualizar" del header — pide /reporte/ultimo ahora mismo en vez
+// de esperar el próximo tick de los 4s, y resetea la firma de dedupe para
+// que si el usuario lo aprieta, vea SIEMPRE el resultado de ese chequeo
+// (re-renderiza aunque el _pub_id no haya cambiado, total es justo lo que
+// pidió: confirmar a ojo si ya llegó algo nuevo).
+async function forzarRecarga() {
+  const btn   = document.getElementById('btn-refresh');
+  const label = document.getElementById('btn-refresh-label');
+  if (btn.disabled) return;
+
+  btn.disabled = true;
+  btn.classList.add('is-loading');
+  label.textContent = 'Actualizando…';
+
+  _firmaUltimoRenderizado = null;
+  await consultarUltimoReporte(true);
+
+  label.textContent = '¡Listo!';
+  setTimeout(() => {
+    label.textContent = 'Actualizar';
+    btn.classList.remove('is-loading');
+    btn.disabled = false;
+  }, 900);
 }
 
 async function consultarUltimoReporte(esPrimeraCarga) {
