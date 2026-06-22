@@ -37,6 +37,15 @@ app = FastAPI(title="MentorIA Audio Analyzer", version="2.0")
 _ultimo_reporte_lock = threading.Lock()
 _ultimo_reporte: dict | None = None
 
+# Contador incremental — se le pega un "_pub_id" único a cada reporte
+# publicado, independiente de su contenido. reporte.html lo usa para saber
+# con certeza si hay un reporte NUEVO que mostrar, en vez de adivinar a
+# partir de nombre/fecha/intento/puntaje_total (que pueden repetirse entre
+# pruebas distintas — ej. mismo nombre default, mismo día, mismo puntaje —
+# y antes hacían que un reporte nuevo se confundiera con el anterior y no
+# se refrescara la pantalla que ya estaba abierta).
+_ultimo_reporte_seq = 0
+
 # Inicializar openSMILE una sola vez al arrancar (costoso, no por request)
 smile = opensmile.Smile(
     feature_set=opensmile.FeatureSet.eGeMAPSv02,
@@ -191,16 +200,18 @@ async def publicar_reporte(request: Request):
     dato queda disponible para quien tenga /reporte abierto en otra
     pantalla (vía /reporte/ultimo, con polling).
     """
-    global _ultimo_reporte
+    global _ultimo_reporte, _ultimo_reporte_seq
     try:
         data = await request.json()
     except Exception:
         raise HTTPException(status_code=400, detail="JSON inválido")
 
     with _ultimo_reporte_lock:
+        _ultimo_reporte_seq += 1
+        data["_pub_id"] = _ultimo_reporte_seq
         _ultimo_reporte = data
 
-    return {"ok": True}
+    return {"ok": True, "pub_id": _ultimo_reporte_seq}
 
 
 @app.get("/reporte/ultimo")

@@ -490,8 +490,16 @@ async function consultarUltimoReporte(esPrimeraCarga) {
     if (!res.ok) throw new Error('HTTP ' + res.status);
 
     const data = await res.json();
-    // Evita re-renderizar (y resetear el scroll) si es el mismo reporte de siempre.
-    const firma = JSON.stringify([data.nombre, data.fecha, data.intento, data.puntaje_total]);
+    // Evita re-renderizar (y resetear el scroll) en cada poll si sigue
+    // siendo el mismo reporte de siempre. Usa _pub_id (un contador único
+    // que el servidor le pega a CADA publicación, ver api.py) en vez de
+    // adivinar a partir de nombre/fecha/intento/puntaje_total — esos campos
+    // pueden repetirse entre pruebas distintas (mismo nombre default, mismo
+    // día, mismo puntaje) y antes hacían que un reporte NUEVO se confundiera
+    // con el anterior y la pantalla ya abierta no se actualizara.
+    const firma = data._pub_id != null
+      ? data._pub_id
+      : JSON.stringify([data.nombre, data.fecha, data.intento, data.puntaje_total]);
     if (firma === _firmaUltimoRenderizado) return;
     _firmaUltimoRenderizado = firma;
     render(data);
