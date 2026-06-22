@@ -154,6 +154,42 @@
     .tag-proximo   { color: #2563eb; }
     .fb-text { font-size: 14px; color: #374151; line-height: 1.55; }
 
+    /* ── Transcript: Pitch + Preguntas y Respuestas ── */
+    .transcript-section { margin-bottom: 20px; }
+    .transcript-title {
+      font-size: 18px; font-weight: 800;
+      color: #1a1a2e; margin-bottom: 12px;
+    }
+    .pitch-card {
+      padding: 22px 26px;
+      font-size: 14px; line-height: 1.7;
+      color: #374151;
+      white-space: pre-wrap;
+    }
+    .qa-item {
+      padding: 18px 22px;
+      margin-bottom: 10px;
+    }
+    .qa-item:last-child { margin-bottom: 0; }
+    .qa-num {
+      font-size: 10px; font-weight: 800;
+      text-transform: uppercase; letter-spacing: 0.1em;
+      color: #7c3aed; margin-bottom: 8px;
+    }
+    .qa-pregunta {
+      font-size: 15px; font-weight: 700;
+      color: #1a1a2e; margin-bottom: 12px;
+      line-height: 1.45;
+    }
+    .qa-respuesta-label {
+      font-size: 10px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: #9ca3af; margin-bottom: 4px;
+    }
+    .qa-respuesta {
+      font-size: 14px; color: #374151; line-height: 1.55;
+    }
+
     /* ── Buttons ── */
     .buttons-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
     .btn {
@@ -176,6 +212,7 @@
       body { background: white; padding: 0; }
       .buttons-row { display: none; }
       .card { box-shadow: none; border: 1px solid #e5e7eb; }
+      .qa-item { break-inside: avoid; }
     }
 
     /* ── Responsive ── */
@@ -261,6 +298,18 @@
     </div>
   </div>
 
+  <!-- Transcript: Pitch -->
+  <div class="transcript-section" id="transcript-pitch-section" style="display:none;">
+    <div class="transcript-title">Transcripción del Pitch</div>
+    <div class="card pitch-card" id="pitch-text"></div>
+  </div>
+
+  <!-- Transcript: Preguntas y Respuestas -->
+  <div class="transcript-section" id="transcript-qa-section" style="display:none;">
+    <div class="transcript-title">Preguntas y Respuestas</div>
+    <div id="qa-list"></div>
+  </div>
+
   <!-- Buttons -->
   <div class="buttons-row">
     <button class="btn btn-primary" id="btn-repetir">Repetir práctica</button>
@@ -302,6 +351,10 @@ function render(d) {
 
   // Secciones
   renderSecciones(d.secciones || []);
+
+  // Transcript: pitch + preguntas y respuestas
+  renderTranscriptPitch(d.transcript_pitch);
+  renderQA(d.preguntas_respuestas || []);
 
   // Feedback
   document.getElementById('fb-fortaleza').textContent = d.feedback?.fortaleza         || '—';
@@ -354,6 +407,35 @@ function renderSecciones(secciones) {
         </ul>
       </div>`;
   }).join('');
+}
+
+function renderTranscriptPitch(texto) {
+  const section = document.getElementById('transcript-pitch-section');
+  const box     = document.getElementById('pitch-text');
+  if (!texto || !texto.trim()) {
+    section.style.display = 'none';
+    return;
+  }
+  section.style.display = '';
+  box.textContent = texto.trim();
+}
+
+function renderQA(pares) {
+  const section = document.getElementById('transcript-qa-section');
+  const list    = document.getElementById('qa-list');
+  if (!pares || !pares.length) {
+    section.style.display = 'none';
+    list.innerHTML = '';
+    return;
+  }
+  section.style.display = '';
+  list.innerHTML = pares.map((p, i) => `
+    <div class="card qa-item">
+      <div class="qa-num">Pregunta ${i + 1}</div>
+      <div class="qa-pregunta">${esc(p.pregunta) || '—'}</div>
+      <div class="qa-respuesta-label">Respuesta</div>
+      <div class="qa-respuesta">${esc(p.respuesta) || '—'}</div>
+    </div>`).join('');
 }
 
 function esc(s) {
@@ -430,6 +512,26 @@ const DEMO = {
   puntaje_total: 14,
   porcentaje: 70,
   nivel_global: 'Intermedio',
+  transcript_pitch: 'Hola, vengo a presentarles Hogarbot, un robot doméstico pensado para familias ' +
+    'con adultos mayores que viven solos. El problema que resolvemos es que muchas personas mayores ' +
+    'se olvidan de tomar sus medicamentos o de cerrar puertas y ventanas, y sus familias no tienen ' +
+    'forma de estar al tanto sin instalar cámaras invasivas. Hogarbot recorre la casa, recuerda los ' +
+    'horarios de medicación con voz, y manda una alerta a un familiar si detecta algo fuera de lo ' +
+    'normal. Buscamos una inversión de 40 mil dólares para terminar el primer lote de producción.',
+  preguntas_respuestas: [
+    {
+      pregunta: '¿Cómo se diferencia Hogarbot de una pulsera de emergencia o un asistente de voz normal?',
+      respuesta: 'La diferencia es que Hogarbot se mueve por la casa solo y puede ver si la persona se cayó, no depende de que ella apriete un botón.'
+    },
+    {
+      pregunta: 'Mencionaste evidencia de pilotos, ¿tienen algún dato concreto de adopción real?',
+      respuesta: 'Todavía no tenemos un piloto formal, pero hicimos pruebas informales con 5 familias y a todas les gustó la idea.'
+    },
+    {
+      pregunta: '¿Cuál sería tu llamado a la acción concreto para mí como inversora?',
+      respuesta: 'Buscamos 40 mil dólares a cambio de un 15% de la empresa, para fabricar el primer lote de 100 unidades.'
+    }
+  ],
   secciones: [
     {
       nombre: 'PITCH',
