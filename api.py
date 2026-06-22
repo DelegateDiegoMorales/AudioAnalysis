@@ -216,10 +216,22 @@ async def publicar_reporte(request: Request):
 
 @app.get("/reporte/ultimo")
 def obtener_ultimo_reporte():
-    """Devuelve el último reporte publicado, o 204 (sin cuerpo) si todavía no hay ninguno."""
+    """
+    Devuelve el último reporte publicado, o {"sin_datos": true} si todavía
+    no hay ninguno.
+
+    Antes esto devolvía status_code=204 con content=None. Starlette igual
+    serializa ese None a un body de 4 bytes ("null") en un JSONResponse,
+    pero uvicorn no permite NINGÚN body en una respuesta 204 (es inválido
+    por spec HTTP) — eso producía "RuntimeError: Response content longer
+    than Content-Length" en cada poll sin reporte todavía, tirando abajo
+    el request ASGI a la mitad y pudiendo romper la conexión/el polling
+    de la página abierta. Usar siempre 200 con un campo "sin_datos" evita
+    el problema de raíz en vez de pelear con las reglas de 204 sin body.
+    """
     with _ultimo_reporte_lock:
         if _ultimo_reporte is None:
-            return JSONResponse(status_code=204, content=None)
+            return JSONResponse(content={"sin_datos": True})
         return JSONResponse(content=_ultimo_reporte)
 
 

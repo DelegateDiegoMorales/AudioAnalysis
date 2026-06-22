@@ -482,14 +482,19 @@ function iniciarModoEnVivo() {
 async function consultarUltimoReporte(esPrimeraCarga) {
   try {
     const res = await fetch('/reporte/ultimo', { cache: 'no-store' });
-
-    if (res.status === 204) {
-      if (esPrimeraCarga) render(DEMO);
-      return;
-    }
     if (!res.ok) throw new Error('HTTP ' + res.status);
 
     const data = await res.json();
+
+    // El servidor ya no usa status 204 para "todavía no hay reporte" —
+    // uvicorn no permite ningún body en una respuesta 204 y eso rompía el
+    // request del lado del servidor (ver api.py). Ahora siempre es 200,
+    // con sin_datos:true cuando no hay nada publicado todavía.
+    if (data.sin_datos) {
+      if (esPrimeraCarga) render(DEMO);
+      return;
+    }
+
     // Evita re-renderizar (y resetear el scroll) en cada poll si sigue
     // siendo el mismo reporte de siempre. Usa _pub_id (un contador único
     // que el servidor le pega a CADA publicación, ver api.py) en vez de
